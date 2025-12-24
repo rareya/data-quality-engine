@@ -1,0 +1,31 @@
+
+import pandas as pd
+import os
+
+class DataLoader:
+    def __init__(self, file_path):
+        self.file_path = file_path
+
+    def load(self):
+        if not os.path.exists(self.file_path):
+            raise FileNotFoundError("File does not exist")
+
+        file_ext = self.file_path.split('.')[-1].lower()
+
+        try:
+            if file_ext == "csv":
+                df = pd.read_csv(self.file_path)
+
+            elif file_ext in ["xls", "xlsx"]:
+                df = pd.read_excel(self.file_path)
+
+            elif file_ext == "json":
+                df = pd.read_json(self.file_path)
+
+            else:
+                raise ValueError("Unsupported file format")
+
+            return df
+
+        except Exception as e:
+            raise RuntimeError(f"Failed to load data: {e}")
