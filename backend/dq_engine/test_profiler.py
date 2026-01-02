@@ -1,19 +1,34 @@
-from .loader import DataLoader
-from .profiler import DataProfiler
-import os
+from backend.dq_engine.loader import DataLoader
+from backend.dq_engine.profiler import DataProfiler
+
 
 def main():
-    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
-    data_path = os.path.join(base_dir, "data", "students.csv")
+    print("📊 Starting Data Profiler Test...\n")
 
-    loader = DataLoader(data_path)
+    # Step 1: Load sample data
+    file_path = "data/students.csv"
+    loader = DataLoader(file_path)
     df = loader.load()
 
+    print("✅ Data Loaded Successfully")
+    print(df.head(), "\n")
+
+    # Step 2: Run profiler
     profiler = DataProfiler(df)
     profile = profiler.profile()
 
-    for key, value in profile.items():
-        print(key, ":", value)
+    # Step 3: Print profiling results
+    print("📘 Profiling Results:\n")
+
+    print(f"Total Rows: {profile['row_count']}")
+    print(f"Duplicate Rows: {profile['duplicate_rows']}\n")
+
+    for col, stats in profile["columns"].items():
+        print(f"Column: {col}")
+        for key, value in stats.items():
+            print(f"  {key}: {value}")
+        print("-" * 40)
+
 
 if __name__ == "__main__":
     main()
