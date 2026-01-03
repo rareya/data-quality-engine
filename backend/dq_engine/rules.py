@@ -1,7 +1,9 @@
 class RuleResult:
-    def __init__(self, passed: bool, message: str):
+    def __init__(self, rule_name: str, passed: bool, message: str):
+        self.rule_name = rule_name
         self.passed = passed
         self.message = message
+
 
 
 class BaseRule:
@@ -20,26 +22,29 @@ class MissingValueRule(BaseRule):
         super().__init__(column)
         self.max_missing_pct = max_missing_pct
 
-    def evaluate(self, profile: dict) -> RuleResult:
-        columns = profile.get("columns", {})
-        col_profile = columns.get(self.column)
+    def check(self, profile):
+        col_profile = profile["columns"].get(self.column)
 
         if not col_profile:
             return RuleResult(
-                False,
-                f"Column '{self.column}' not found in dataset"
+                rule_name=self.__class__.__name__,
+                passed=False,
+                message=f"Column '{self.column}' not found"
             )
 
-        missing_pct = col_profile.get("missing_pct", 0)
+        missing_pct = col_profile["missing_pct"]
 
         if missing_pct > self.max_missing_pct:
             return RuleResult(
-            False,
-            f"Missing {missing_pct}% exceeds allowed {self.max_missing_pct}%"
+                rule_name=self.__class__.__name__,
+                passed=False,
+                message=f"Missing {missing_pct}% exceeds allowed {self.max_missing_pct}%"
             )
 
         return RuleResult(
-        True,
-        f"Missing {missing_pct}% within allowed limit"
-    )
+            rule_name=self.__class__.__name__,
+            passed=True,
+            message="Rule passed"
+        )
+
 
