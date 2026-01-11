@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 
-
 class DataProfiler:
     def __init__(self, df: pd.DataFrame):
         self.df = df
@@ -11,7 +10,8 @@ class DataProfiler:
         profile = {
             "row_count": self.n_rows,
             "duplicate_rows": int(self.df.duplicated().sum()),
-            "columns": {}
+            "columns": {},
+            "log_metrics": {}
         }
 
         for col in self.df.columns:
@@ -30,10 +30,18 @@ class DataProfiler:
 
             profile["columns"][col] = col_profile
 
+        # Log-aware metrics
+        profile["log_metrics"] = self._profile_logs()
+
         return profile
+
+    # ---------------- numeric ----------------
 
     def _profile_numeric(self, series):
         clean = series.dropna()
+
+        if clean.empty:
+            return {}
 
         q1 = clean.quantile(0.25)
         q3 = clean.quantile(0.75)
@@ -50,17 +58,57 @@ class DataProfiler:
             "outlier_count": int(len(outliers))
         }
 
+    # ---------------- categorical ----------------
+
     def _profile_categorical(self, series):
         clean = series.dropna()
         value_counts = clean.value_counts()
 
-        most_common = value_counts.idxmax() if not value_counts.empty else None
-        most_common_pct = round((value_counts.max() / len(clean)) * 100, 2) if not value_counts.empty else 0
-
-        rare_count = int((value_counts / len(clean) < 0.05).sum())
+        if value_counts.empty:
+            return {}
 
         return {
-            "most_frequent": most_common,
-            "most_frequent_pct": most_common_pct,
-            "rare_value_count": rare_count
+            "most_frequent": value_counts.idxmax(),
+            "most_frequent_pct": round(value_counts.max() / len(clean) * 100, 2),
+            "rare_value_count": int((value_counts / len(clean) < 0.05).sum())
         }
+
+    # ---------------- log-specific ----------------
+
+    def _profile_logs(self):
+        metrics = {}
+
+        if "status" in self.df.columns:
+            status_counts = self.df["status"].value_counts(normalize=True) * 100
+            metrics["status_distribution_pct"] = status_counts.round(2).to_dict()
+            metrics["error_rate_pct"] = round(
+                status_counts.get(500, 0) +
+                status_counts.get(502, 0) +
+                status_counts.get(503, 0),
+                2
+            )
+
+        if "ip" in self.df.columns:
+            metrics["top_ips"] = (
+                self.df["ip"]
+                .value_counts()
+                .head(5)
+                .to_dict()
+            )
+
+        if "endpoint" in self.df.columns:
+            metrics["top_endpoints"] = (
+                self.df["endpoint"]
+                .value_counts()
+                .head(5)
+                .to_dict()
+            )
+
+        if "timestamp" in self.df.columns:
+            parsed = pd.to_datetime(self.df["timestamp"], errors="coerce")
+            metrics["time_span"] = {
+                "start": str(parsed.min()),
+                "end": str(parsed.max())
+            }
+
+        return metrics

@@ -4,7 +4,7 @@ from backend.dq_engine.rules import MissingValueRule
 
 
 def main():
-    print("🧪 Testing Rules Engine\n")
+    print(" Testing Rules Engine\n")
 
     loader = DataLoader("data/students.csv")
     df = loader.load()

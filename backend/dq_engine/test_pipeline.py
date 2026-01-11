@@ -2,7 +2,7 @@ from backend.dq_engine.pipeline import DataQualityPipeline
 
 
 def main():
-    pipeline = DataQualityPipeline("data/students.csv")
+    pipeline = DataQualityPipeline("data/ongc_access.csv")
     report = pipeline.run()
 
     print("\n📊 DATA QUALITY PIPELINE REPORT\n")
