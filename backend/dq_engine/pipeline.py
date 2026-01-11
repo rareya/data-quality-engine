@@ -19,11 +19,18 @@ class DataQualityPipeline:
 
         schema = SchemaDetector(df).infer_schema()
 
-        rules = [
-            MissingValueRule(column="age", max_missing_pct=10)
-        ]
+        rules = []
 
-        rule_results = [rule.check(profile) for rule in rules]
+        for col, meta in profile["columns"].items():
+            rules.append(
+                MissingValueRule(
+                    column=col,
+                    max_missing_pct=20   # configurable threshold
+                )
+            )
+
+
+        rule_results = [rule.evaluate(profile) for rule in rules]
 
         scorer = QualityScorer(rule_results)
         score_report = scorer.evaluate()
