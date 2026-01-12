@@ -8,14 +8,16 @@ class RuleFactory:
     def generate_rules(self):
         rules = []
 
-        for col, meta in self.profile["columns"].items():
-            # Base weight logic
-            weight = 20
+        for col, col_profile in self.profile["columns"].items():
+            semantic = self.schema[col]["semantic_type"]
 
-            if self.schema[col]["semantic_type"] == "id-like":
-                weight = 30
-            elif self.schema[col]["semantic_type"] == "categorical":
-                weight = 15
+            # relative importance (not final score)
+            if semantic == "id-like":
+                weight = 3
+            elif semantic == "categorical":
+                weight = 2
+            else:
+                weight = 1
 
             rules.append(
                 MissingValueRule(
