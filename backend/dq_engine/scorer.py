@@ -3,28 +3,30 @@ class QualityScorer:
         self.rule_results = rule_results
 
     def evaluate(self):
-        total = len(self.rule_results)
-        passed = sum(1 for r in self.rule_results if r.passed)
-        failed = total - passed
+        total_weight = sum(r.weight for r in self.rule_results)
+        earned_weight = sum(r.weight for r in self.rule_results if r.passed)
 
-        score = round((passed / total) * 100, 2) if total > 0 else 0.0
+        score = round((earned_weight / total_weight) * 100, 2) if total_weight > 0 else 0.0
 
-        status = (
-            "PASS" if score == 100
-            else "WARNING" if score >= 70
-            else "FAIL"
-        )
+        if score >= 90:
+            status = "EXCELLENT"
+        elif score >= 70:
+            status = "GOOD"
+        elif score >= 50:
+            status = "WARNING"
+        else:
+            status = "POOR"
 
         return {
-            "total_rules": total,
-            "passed": passed,
-            "failed": failed,
             "score": score,
             "status": status,
+            "total_weight": total_weight,
+            "earned_weight": earned_weight,
             "details": [
                 {
                     "rule": r.rule_name,
                     "passed": r.passed,
+                    "weight": r.weight,
                     "message": r.message
                 }
                 for r in self.rule_results
