@@ -1,0 +1,27 @@
+import pandas as pd
+
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+
+from dq_engine.schema import SchemaDetector
+
+# Create dummy data
+data = {
+    "student_id": [1, 2, 3, 4],
+    "age": [18, 19, None, 20],
+    "gender": ["M", "F", "F", None],
+    "score": [88, 92, 85, 90],
+    "constant_col": [1, 1, 1, 1]
+}
+
+df = pd.DataFrame(data)
+
+detector = SchemaDetector(df)
+schema = detector.infer_schema()
+
+for col, info in schema.items():
+    print(f"\nColumn: {col}")
+    for k, v in info.items():
+        print(f"  {k}: {v}")
