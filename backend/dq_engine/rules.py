@@ -1,5 +1,5 @@
 class RuleResult:
-    def __init__(self, rule_name: str, passed: bool, message: str, weight: float = 1.0):
+    def __init__(self, rule_name: str, passed: bool, message: str, weight: float):
         self.rule_name = rule_name
         self.passed = passed
         self.message = message
@@ -7,17 +7,17 @@ class RuleResult:
 
 
 class BaseRule:
-    def __init__(self, weight: float = 1.0):
+    def __init__(self, weight: float):
         self.weight = weight
 
     def evaluate(self, profile: dict) -> RuleResult:
-        raise NotImplementedError("Rule must implement evaluate()")
-
+        raise NotImplementedError
+        
 
 # ---------------- Column-level rules ----------------
 
 class MissingValueRule(BaseRule):
-    def __init__(self, column: str, max_missing_pct: float, weight: float = 1.0):
+    def __init__(self, column: str, max_missing_pct: float, weight: float = 20):
         super().__init__(weight)
         self.column = column
         self.max_missing_pct = max_missing_pct
@@ -27,34 +27,60 @@ class MissingValueRule(BaseRule):
 
         if not col_profile:
             return RuleResult(
-                rule_name=self.__class__.__name__,
-                passed=False,
-                message=f"Column '{self.column}' not found",
-                weight=self.weight
+                self.__class__.__name__,
+                False,
+                f"Column '{self.column}' not found",
+                self.weight
             )
 
-        missing_pct = col_profile.get("missing_pct", 0)
+        missing_pct = col_profile["missing_pct"]
 
         if missing_pct > self.max_missing_pct:
             return RuleResult(
-                rule_name=self.__class__.__name__,
-                passed=False,
-                message=f"{self.column}: {missing_pct}% missing exceeds {self.max_missing_pct}%",
-                weight=self.weight
+                self.__class__.__name__,
+                False,
+                f"{self.column}: {missing_pct}% missing",
+                self.weight
             )
 
         return RuleResult(
-            rule_name=self.__class__.__name__,
-            passed=True,
-            message=f"{self.column}: missing within limit",
-            weight=self.weight
+            self.__class__.__name__,
+            True,
+            f"{self.column}: missing within limit",
+            self.weight
+        )
+
+
+class DuplicateRowRule(BaseRule):
+    def __init__(self, max_duplicate_pct: float = 5.0, weight: float = 15):
+        super().__init__(weight)
+        self.max_duplicate_pct = max_duplicate_pct
+
+    def evaluate(self, profile: dict) -> RuleResult:
+        total = profile["row_count"]
+        duplicates = profile["duplicate_rows"]
+        pct = (duplicates / total) * 100 if total else 0
+
+        if pct > self.max_duplicate_pct:
+            return RuleResult(
+                self.__class__.__name__,
+                False,
+                f"{pct:.2f}% duplicate rows",
+                self.weight
+            )
+
+        return RuleResult(
+            self.__class__.__name__,
+            True,
+            "Duplicate rows within limit",
+            self.weight
         )
 
 
 # ---------------- Log-specific rules ----------------
 
 class ErrorRateRule(BaseRule):
-    def __init__(self, max_error_rate_pct: float, weight: float = 2.0):
+    def __init__(self, max_error_rate_pct: float, weight: float = 10):
         super().__init__(weight)
         self.max_error_rate_pct = max_error_rate_pct
 
@@ -63,47 +89,81 @@ class ErrorRateRule(BaseRule):
 
         if error_rate is None:
             return RuleResult(
-                rule_name=self.__class__.__name__,
-                passed=False,
-                message="Error rate metric missing",
-                weight=self.weight
+                self.__class__.__name__,
+                False,
+                "Error rate missing",
+                self.weight
             )
 
         if error_rate > self.max_error_rate_pct:
             return RuleResult(
-                rule_name=self.__class__.__name__,
-                passed=False,
-                message=f"Error rate {error_rate}% exceeds {self.max_error_rate_pct}%",
-                weight=self.weight
+                self.__class__.__name__,
+                False,
+                f"Error rate {error_rate}%",
+                self.weight
             )
 
         return RuleResult(
-            rule_name=self.__class__.__name__,
-            passed=True,
-            message="Error rate within acceptable range",
-            weight=self.weight
+            self.__class__.__name__,
+            True,
+            "Error rate acceptable",
+            self.weight
         )
 
 
 class TrafficVolumeRule(BaseRule):
-    def __init__(self, min_rows: int, weight: float = 1.5):
+    def __init__(self, min_rows: int, weight: float = 5):
         super().__init__(weight)
         self.min_rows = min_rows
 
     def evaluate(self, profile: dict) -> RuleResult:
-        rows = profile.get("row_count", 0)
+        rows = profile["row_count"]
 
         if rows < self.min_rows:
             return RuleResult(
-                rule_name=self.__class__.__name__,
-                passed=False,
-                message=f"Too few log entries: {rows}",
-                weight=self.weight
+                self.__class__.__name__,
+                False,
+                f"Only {rows} rows",
+                self.weight
             )
 
         return RuleResult(
-            rule_name=self.__class__.__name__,
-            passed=True,
-            message="Sufficient log volume",
-            weight=self.weight
+            self.__class__.__name__,
+            True,
+            "Sufficient data volume",
+            self.weight
+        )
+
+
+class ConstantColumnRule(BaseRule):
+    def __init__(self, column: str, weight: float = 10):
+        super().__init__(weight)
+        self.column = column
+
+    def evaluate(self, profile: dict) -> RuleResult:
+        col_profile = profile["columns"].get(self.column)
+
+        if not col_profile:
+            return RuleResult(
+                self.__class__.__name__,
+                False,
+                f"Column '{self.column}' not found",
+                self.weight
+            )
+
+        unique_count = col_profile.get("unique_count", 0)
+
+        if unique_count <= 1:
+            return RuleResult(
+                self.__class__.__name__,
+                False,
+                f"{self.column} is constant",
+                self.weight
+            )
+
+        return RuleResult(
+            self.__class__.__name__,
+            True,
+            f"{self.column} varies",
+            self.weight
         )
