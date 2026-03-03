@@ -6,6 +6,19 @@ from backend.dq_engine.rules import (
     TrafficVolumeRule
 )
 
+# Semantics where constant values are VALID
+CONSTANT_ALLOWED_SEMANTICS = {
+    "unit",
+    "units",
+    "currency",
+    "country-code",
+    "system-metadata",
+    "status",
+    "http_status",    # HTTP status being constant (all 200s) = healthy server, not a data issue
+    "http_method",    # HTTP method being constant is valid in filtered log datasets
+    "boolean",        # Boolean columns with one value are valid in some contexts
+}
+
 
 class RuleFactory:
     def __init__(self, schema: dict, profile: dict):
@@ -18,19 +31,25 @@ class RuleFactory:
         # ---------------- Column-level rules ----------------
         for col, col_profile in self.profile["columns"].items():
 
-            semantic = self.schema[col]["semantic_type"]
+            # Normalize semantic
+            semantic = (
+                self.schema.get(col, {})
+                .get("semantic_type", "unknown")
+                .strip()
+                .lower()
+            )
 
             # Default weights
             missing_weight = 20
             constant_weight = 10
 
-            # Increase importance based on semantic meaning
             if semantic == "id-like":
                 missing_weight = 30
                 constant_weight = 20
             elif semantic == "categorical":
                 missing_weight = 15
 
+            # Missing values rule ALWAYS applies
             rules.append(
                 MissingValueRule(
                     column=col,
@@ -39,12 +58,14 @@ class RuleFactory:
                 )
             )
 
-            rules.append(
-                ConstantColumnRule(
-                    column=col,
-                    weight=constant_weight
+            # ✅ Apply ConstantColumnRule ONLY when column is expected to vary
+            if semantic not in CONSTANT_ALLOWED_SEMANTICS:
+                rules.append(
+                    ConstantColumnRule(
+                        column=col,
+                        weight=constant_weight
+                    )
                 )
-            )
 
         # ---------------- Dataset-level rules ----------------
         rules.append(
@@ -54,8 +75,13 @@ class RuleFactory:
             )
         )
 
-        # ---------------- Log-specific rules (optional) ----------------
-        if "log_metrics" in self.profile:
+        # ---------------- Log-specific rules ----------------
+        log_metrics = self.profile.get("log_metrics")
+
+        if (
+            isinstance(log_metrics, dict)
+            and log_metrics.get("error_rate_pct") is not None
+        ):
             rules.append(
                 ErrorRateRule(
                     max_error_rate_pct=2.0,
@@ -63,6 +89,7 @@ class RuleFactory:
                 )
             )
 
+        if self.profile.get("row_count", 0) >= 100:
             rules.append(
                 TrafficVolumeRule(
                     min_rows=100,

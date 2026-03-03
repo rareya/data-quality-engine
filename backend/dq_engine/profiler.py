@@ -105,7 +105,10 @@ class DataProfiler:
             )
 
         if "timestamp" in self.df.columns:
-            parsed = pd.to_datetime(self.df["timestamp"], errors="coerce")
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                parsed = pd.to_datetime(self.df["timestamp"], errors="coerce")
             metrics["time_span"] = {
                 "start": str(parsed.min()),
                 "end": str(parsed.max())

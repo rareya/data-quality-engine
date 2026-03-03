@@ -85,9 +85,33 @@ class SchemaDetector:
         return round(invalid.mean() * 100, 2)
 
     def _invalid_timestamp_pct(self, series):
-        parsed = pd.to_datetime(series, errors="coerce")
+        # Try common formats first to avoid UserWarning
+        for fmt in [
+            "%d/%b/%Y:%H:%M:%S,%z",   # Apache CSV: 05/Jan/2026:03:41:59,+0000
+            "%d/%b/%Y:%H:%M:%S %z",   # Apache standard: 05/Jan/2026:03:41:59 +0000
+            "%Y-%m-%dT%H:%M:%S",      # ISO format
+            "%Y-%m-%d %H:%M:%S",      # Standard datetime
+            "%Y-%m-%d",               # Date only
+        ]:
+            try:
+                parsed = pd.to_datetime(series, format=fmt, errors="coerce")
+                if parsed.notna().sum() > len(series) * 0.5:
+                    return round(parsed.isnull().mean() * 100, 2)
+            except Exception:
+                continue
+
+        # Final fallback
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            parsed = pd.to_datetime(series, errors="coerce")
         return round(parsed.isnull().mean() * 100, 2)
 
     def _invalid_status_pct(self, series):
-        invalid = ~series.between(100, 599)
+        def is_valid_status(val):
+            try:
+                return 100 <= int(val) <= 599
+            except (ValueError, TypeError):
+                return False
+        invalid = ~series.apply(is_valid_status)
         return round(invalid.mean() * 100, 2)
