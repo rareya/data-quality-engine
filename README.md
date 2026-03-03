@@ -231,10 +231,10 @@ The React frontend provides a 6-section dashboard:
 - **Column Explorer** — click any column to inspect its full statistical profile
 - **Parse Report** — how the smart loader processed the file, encoding, freshness
 
-![Overview](screenshots/overview1.png)
-![EDA](screenshots/EDA.png)
-![Recommendations](screenshots/recommendation.png)
-![Column Explorer](screenshots/rule_validation.png)
+![Overview](screenshots/overview1.png.png)
+![EDA](screenshots/EDA.png.png)
+![Recommendations](screenshots/recommendation.png.png)
+![Column Explorer](screenshots/rule_validation.png.png)
 ---
 
 ## Sample Datasets
