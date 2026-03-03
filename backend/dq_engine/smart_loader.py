@@ -36,6 +36,49 @@ MIN_CONFIDENCE        = 0.60                 # below this → warn user
 MAX_COLUMNS           = 500                  # safety limit
 MAX_FILE_SIZE_BYTES   = 2 * 1024 * 1024 * 1024  # 2GB hard limit
 
+#_______________________________________-
+JUNK_LINE_PATTERNS = [
+    re.compile(r'^[=\-\*\.]{3,}'),
+    re.compile(r'==>[^,]*,.*,<=='),
+    re.compile(r'^#+\s'),
+    re.compile(r'^\[.*\]$'),
+    re.compile(r'^log\s+file', re.IGNORECASE),
+]
+
+def is_junk_line(line: str) -> bool:
+    clean = line.strip().strip('"').strip()
+    print(f"JUNK CHECK: {repr(clean[:150])}")
+    if not clean:
+        return True
+    for pattern in JUNK_LINE_PATTERNS:
+        if pattern.search(clean):
+            return True
+    return False
+
+def sanitize_line(line: str) -> str:
+    """
+    Strips outer Excel-added quotes and normalizes internal quoting.
+    """
+    stripped = line.strip()
+    
+    # Keep unwrapping outer quotes until stable
+    prev = None
+    while prev != stripped:
+        prev = stripped
+        if stripped.startswith('"') and stripped.endswith('"'):
+            inner = stripped[1:-1]
+            if any(x in inner for x in [',-,-,', 'HTTP', 'GET', 'POST', 'HEAD', 'STATUS']):
+                stripped = inner
+            else:
+                break
+    
+    # Normalize ALL quote runs down to single quote
+    # Then our regex can match cleanly
+    stripped = re.sub(r'"{2,}', '"', stripped)
+    
+    return stripped
+
+
 
 # ── Log format patterns ───────────────────────────────────────────────────────
 
@@ -68,21 +111,21 @@ LOG_FORMATS = {
     },
 
     "apache_csv": {
-        "pattern": re.compile(
-            r'(?P<ip>[a-fA-F0-9\.\:]+)'
-            r',-,-,'
-            r'\[(?P<timestamp>[^\]]+)\],'
-            r'\"\"\"(?P<method>\w+)\",'
-            r'(?P<endpoint>[^,]+),'
-            r'[^,]+,'
-            r'(?P<status>\d{3}),'
-            r'(?P<size>[\d\-]+),'
-            r'[^,]+,'
-            r'\"\"\"(?P<user_agent>[^\"]+)'
-        ),
-        "columns": ["ip", "timestamp", "method", "endpoint", "status", "size", "user_agent"],
-        "description": "Apache CSV Log Format (comma-separated with quoted fields)"
-    },
+    "pattern": re.compile(
+        r'(?P<ip>[a-fA-F0-9\.\:]+)'
+        r',-,-,'
+        r'\[(?P<timestamp>[^\]]+)\],'
+        r'"(?P<method>\w+)",'
+        r'(?P<endpoint>[^,]+),'
+        r'[^,]+,'
+        r'(?P<status>\d{3}),'
+        r'(?P<size>[\d\-]+),'
+        r'[^,]+,'
+        r'"(?P<agent>[^"]+)'
+    ),
+    "columns": ["ip", "timestamp", "method", "endpoint", "status", "size", "agent"],
+    "description": "Apache CSV Log Format (comma-separated with quoted fields)"
+},
 
     "syslog": {
         "pattern": re.compile(
@@ -261,7 +304,14 @@ class SmartLoader:
                 for i, line in enumerate(f):
                     if i >= SAMPLE_LINES:
                         break
-                    lines.append(line.rstrip("\n"))
+                    raw = line.rstrip("\r\n")
+                    if is_junk_line(raw):
+                        continue
+                    clean = sanitize_line(raw)
+                    if clean:
+                        lines.append(clean)
+                    if len(lines) >= SAMPLE_LINES:
+                        break
         except Exception as e:
             self.parse_report["warnings"].append(
                 f"Error reading raw lines: {e}. Falling back to UTF-8."
@@ -270,7 +320,14 @@ class SmartLoader:
                 for i, line in enumerate(f):
                     if i >= SAMPLE_LINES:
                         break
-                    lines.append(line.rstrip("\n"))
+                    raw = line.rstrip("\r\n")
+                    if is_junk_line(raw):
+                        continue
+                    clean = sanitize_line(raw)
+                    if clean:
+                        lines.append(clean)
+                    if len(lines) >= SAMPLE_LINES:
+                        break
 
         return lines
 
@@ -317,7 +374,10 @@ class SmartLoader:
             re.compile(r'"(GET|POST|PUT|DELETE|HEAD|OPTIONS)'),    # HTTP method
             re.compile(r'\b(ERROR|WARN|INFO|DEBUG|CRITICAL)\b'),   # Log levels
             re.compile(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}'),  # ISO timestamp
-            re.compile(r'\b(GET|POST|PUT|DELETE)\s+/\S+'),        # HTTP method + path
+            re.compile(r'\b(GET|POST|PUT|DELETE)\s+/\S+'),
+            re.compile(r',-,-,'),        # Apache CSV separator
+            re.compile(r',\d{3},'),      # HTTP status in CSV log
+            re.compile(r'[a-f0-9]{4}:[a-f0-9]{4}:'),  # IPv6        # HTTP method + path
         ]
 
         scores = []
@@ -530,7 +590,9 @@ class SmartLoader:
 
         with open(self.file_path, "r", encoding=encoding, errors="replace") as f:
             for i, line in enumerate(f):
-                line = line.strip()
+                if is_junk_line(line):
+                    continue
+                line = sanitize_line(line)
                 if not line:
                     continue
 
