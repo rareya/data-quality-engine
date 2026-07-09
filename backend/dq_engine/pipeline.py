@@ -68,6 +68,8 @@ class DataQualityPipeline:
         # 10. Compile final report
         reporter = QualityReport(profile, rule_results, score_report)
         report = reporter.generate()
+        report["profile"] = profile
+
         report["parse_report"] = parse_report
 
         report["eda"] = eda_results
@@ -113,6 +115,8 @@ class DataQualityPipelineFromDataFrame:
 
         reporter = QualityReport(profile, rule_results, score_report)
         report = reporter.generate()
+        report["profile"] = profile
+
 
         report["eda"] = eda_results
         report["recommendations"] = recommendations
