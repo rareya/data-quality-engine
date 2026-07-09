@@ -22,7 +22,14 @@ class DataProfiler:
                 "unique_count": int(series.nunique(dropna=True))
             }
 
-            if pd.api.types.is_numeric_dtype(series):
+            # NOTE: is_numeric_dtype(bool_series) returns True in pandas,
+            # since bool is a numeric subtype. Must exclude explicitly or
+            # quantile()/mean()-based numeric profiling crashes on newer
+            # numpy (boolean subtract not supported).
+            if pd.api.types.is_bool_dtype(series):
+                col_profile.update(self._profile_boolean(series))
+
+            elif pd.api.types.is_numeric_dtype(series):
                 col_profile.update(self._profile_numeric(series))
 
             elif pd.api.types.is_object_dtype(series):
@@ -34,6 +41,23 @@ class DataProfiler:
         profile["log_metrics"] = self._profile_logs()
 
         return profile
+
+    # ---------------- boolean ----------------
+
+    def _profile_boolean(self, series):
+        clean = series.dropna()
+
+        if clean.empty:
+            return {}
+
+        true_count = int(clean.sum())
+        false_count = int(len(clean) - true_count)
+
+        return {
+            "true_count": true_count,
+            "false_count": false_count,
+            "true_pct": round(true_count / len(clean) * 100, 2)
+        }
 
     # ---------------- numeric ----------------
 

@@ -36,7 +36,6 @@ MIN_CONFIDENCE        = 0.60                 # below this → warn user
 MAX_COLUMNS           = 500                  # safety limit
 MAX_FILE_SIZE_BYTES   = 2 * 1024 * 1024 * 1024  # 2GB hard limit
 
-#_______________________________________-
 JUNK_LINE_PATTERNS = [
     re.compile(r'^[=\-\*\.]{3,}'),
     re.compile(r'==>[^,]*,.*,<=='),
@@ -47,7 +46,6 @@ JUNK_LINE_PATTERNS = [
 
 def is_junk_line(line: str) -> bool:
     clean = line.strip().strip('"').strip()
-    print(f"JUNK CHECK: {repr(clean[:150])}")
     if not clean:
         return True
     for pattern in JUNK_LINE_PATTERNS:
@@ -60,7 +58,7 @@ def sanitize_line(line: str) -> str:
     Strips outer Excel-added quotes and normalizes internal quoting.
     """
     stripped = line.strip()
-    
+
     # Keep unwrapping outer quotes until stable
     prev = None
     while prev != stripped:
@@ -71,13 +69,12 @@ def sanitize_line(line: str) -> str:
                 stripped = inner
             else:
                 break
-    
+
     # Normalize ALL quote runs down to single quote
     # Then our regex can match cleanly
     stripped = re.sub(r'"{2,}', '"', stripped)
-    
-    return stripped
 
+    return stripped
 
 
 # ── Log format patterns ───────────────────────────────────────────────────────
@@ -157,7 +154,7 @@ LOG_FORMATS = {
 class SmartLoader:
     """
     Intelligent file loader.
-    
+
     Usage:
         loader = SmartLoader("path/to/file.csv")
         df, parse_report = loader.load()
@@ -207,6 +204,8 @@ class SmartLoader:
         # ── Step 5: Parse based on type ───────────────────────────────────
         if file_type == "log":
             df = self._parse_log(raw_lines, encoding)
+        elif file_type == "json_log":
+            df = self._parse_json_log(encoding)
         else:
             df = self._parse_tabular(raw_lines, encoding)
 
@@ -214,7 +213,7 @@ class SmartLoader:
         file_size = os.path.getsize(self.file_path)
         self.parse_report["file_size_mb"] = round(file_size / 1024 / 1024, 2)
 
-        if file_size > MAX_FULL_LOAD_BYTES and file_type != "log":
+        if file_size > MAX_FULL_LOAD_BYTES and file_type not in ("log", "json_log"):
             df = self._intelligent_sample(encoding)
             self.parse_report["load_strategy"] = "intelligent_sampling"
         else:
@@ -339,7 +338,7 @@ class SmartLoader:
         Classifies file as:
         - "tabular"  → CSV, TSV, PSV etc
         - "log"      → any log format
-        - "json"     → JSON lines
+        - "json_log" → JSON lines OR a standard JSON array
         """
         ext = os.path.splitext(self.file_path)[1].lower()
 
@@ -347,7 +346,11 @@ class SmartLoader:
         if ext in {".xlsx", ".xls"}:
             return "excel"
 
-        # Check for JSON lines
+        # .json extension is authoritative — don't rely on content sniffing alone
+        if ext == ".json":
+            return "json_log"
+
+        # Check for JSON lines (no .json extension, e.g. .log/.txt containing JSON)
         json_score = sum(
             1 for line in raw_lines[:10]
             if line.strip().startswith("{") and line.strip().endswith("}")
@@ -377,7 +380,7 @@ class SmartLoader:
             re.compile(r'\b(GET|POST|PUT|DELETE)\s+/\S+'),
             re.compile(r',-,-,'),        # Apache CSV separator
             re.compile(r',\d{3},'),      # HTTP status in CSV log
-            re.compile(r'[a-f0-9]{4}:[a-f0-9]{4}:'),  # IPv6        # HTTP method + path
+            re.compile(r'[a-f0-9]{4}:[a-f0-9]{4}:'),  # IPv6
         ]
 
         scores = []
@@ -627,8 +630,34 @@ class SmartLoader:
 
     def _parse_json_log(self, encoding: str) -> pd.DataFrame:
         """
-        Parses JSON log files (one JSON object per line).
+        Parses JSON files. Supports two shapes:
+        1. A single JSON array: [{"a":1}, {"a":2}]  (most common .json shape)
+        2. JSON-lines: one JSON object per line (common for log files)
+        Tries (1) first since it's unambiguous when it succeeds; falls back
+        to (2) for genuinely line-delimited JSON.
         """
+        # Attempt 1: whole-file JSON array / object
+        try:
+            with open(self.file_path, "r", encoding=encoding, errors="replace") as f:
+                data = json.load(f)
+
+            if isinstance(data, list):
+                self.parse_report["warnings"].append(
+                    "Parsed as a standard JSON array."
+                )
+                return pd.DataFrame(data)
+
+            if isinstance(data, dict):
+                # Single JSON object — wrap as one-row DataFrame
+                self.parse_report["warnings"].append(
+                    "Parsed as a single JSON object (one row)."
+                )
+                return pd.DataFrame([data])
+
+        except json.JSONDecodeError:
+            pass  # not a single valid JSON document — fall through to JSON-lines
+
+        # Attempt 2: JSON-lines (one object per line)
         records = []
         error_rows = []
 
@@ -645,6 +674,11 @@ class SmartLoader:
         if error_rows:
             self.parse_report["warnings"].append(
                 f"{len(error_rows)} JSON lines could not be parsed and were skipped."
+            )
+
+        if not records:
+            raise ValueError(
+                "Could not parse file as either a JSON array or JSON-lines format."
             )
 
         return pd.DataFrame(records)

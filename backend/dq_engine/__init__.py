@@ -5,8 +5,8 @@ Data Quality Engine package.
 """
 
 from backend.dq_engine.pipeline import DataQualityPipeline, DataQualityPipelineFromDataFrame
-from backend.dq_engine.loader import DataLoader
 from backend.dq_engine.sql_loader import SQLiteLoader
+from backend.dq_engine.smart_loader import SmartLoader
 from backend.dq_engine.profiler import DataProfiler
 from backend.dq_engine.schema import SchemaDetector
 from backend.dq_engine.rule_factory import RuleFactory
