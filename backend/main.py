@@ -14,6 +14,7 @@ import os
 import math
 import shutil
 import tempfile
+import uuid
 import numpy as np
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form
@@ -170,12 +171,31 @@ async def demo():
     """
     demo_db_path = None
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as tmp:
-            demo_db_path = tmp.name
+        # WINDOWS FIX: previously used tempfile.NamedTemporaryFile(...) here,
+        # which opens and holds an OS-level file handle on Windows even after
+        # the `with` block exits. sqlite3.connect() inside
+        # create_demo_database() would then fail with WinError 32
+        # ("process cannot access the file") because Windows still considered
+        # it locked. Generating a unique path in the temp directory WITHOUT
+        # ever opening a handle on it avoids the lock entirely — nothing is
+        # holding the file, so SQLite can create and write it freely.
+        # This works identically on Linux/Mac, where the original code never
+        # actually failed (Windows allows the OS to be stricter about locks).
+        demo_db_path = os.path.join(
+            tempfile.gettempdir(), f"demo_{uuid.uuid4().hex}.db"
+        )
 
         loader = SQLiteLoader.create_demo_database(demo_db_path)
         loader.connect()
         df = loader.load_table("sales")
+
+        # WINDOWS FIX: SQLAlchemy's engine keeps a pooled connection open to
+        # the file even after load_table() returns. On Windows this holds
+        # the same kind of OS-level lock as before — os.unlink() below would
+        # fail with WinError 32 unless the engine is explicitly disposed
+        # first, releasing all pooled connections.
+        if loader.engine is not None:
+            loader.engine.dispose()
 
         pipeline = DataQualityPipelineFromDataFrame(df)
         report = pipeline.run()
@@ -191,7 +211,14 @@ async def demo():
         raise HTTPException(status_code=500, detail=f"Demo failed: {str(e)}")
     finally:
         if demo_db_path and os.path.exists(demo_db_path):
-            os.unlink(demo_db_path)
+            try:
+                os.unlink(demo_db_path)
+            except PermissionError:
+                # Best-effort cleanup — if the OS still hasn't released the
+                # handle, leave the temp file behind rather than crash the
+                # request. It's in the OS temp dir and will be cleaned up
+                # eventually; not worth failing the response over.
+                pass
 
 
 # ── Run ───────────────────────────────────────────────────────────────────────
