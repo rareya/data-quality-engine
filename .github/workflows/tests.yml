@@ -22,6 +22,6 @@ jobs:
           pip install -r requirements.txt
           pip install pytest pytest-cov
 
-      - name: Run tests with coverage
-        run: pytest tests/ -v --cov=backend/dq_engine --cov-report=term-missing
+       - name: Run tests with coverage
+        run: python -m pytest tests/ -v --cov=backend/dq_engine --cov-report=term-missing
 
