@@ -1,273 +1,101 @@
-# ◈ Data Quality Engine
+# Data Quality Engine
 
-> Automated data quality profiling, validation, scoring and EDA — for any dataset, any format.
+A data quality profiling and validation tool for teams who need something between "eyeball the CSV in Excel" and a full enterprise platform like Informatica or Talend. Point it at a file, get back a quality score, a list of specific problems, and plain-English recommendations for fixing them — without writing a validation suite by hand.
 
-![Python](https://img.shields.io/badge/Python-3.10+-blue?style=flat-square&logo=python)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green?style=flat-square&logo=fastapi)
-![React](https://img.shields.io/badge/React-18+-61DAFB?style=flat-square&logo=react)
-![License](https://img.shields.io/badge/License-MIT-gray?style=flat-square)
+Built with Python, FastAPI, and React.
 
----
+## What it actually does
 
-## The Problem
+Most of the "checks" a data quality tool runs are individually simple — count nulls, find duplicates, flag outliers. Anyone can write that in a few lines of pandas. What this project does instead is automate the *decision* of which checks a given dataset needs, and package the results into something a non-technical stakeholder can read.
 
-Organisations make critical decisions based on data — but most have no systematic way to verify data quality before analysis. Manual checking is slow, inconsistent and misses context. Enterprise tools like Informatica and Talend cost lakhs and require dedicated teams.
+- **Smart Loader** — detects file format, encoding, and delimiter automatically. Handles CSV, TSV, JSON (both array and line-delimited), Excel, and several log formats (Apache combined, Apache CSV, Nginx, syslog). Falls back gracefully through a chain of parsing strategies rather than failing outright on a malformed file, and never silently drops rows — anything it can't parse cleanly gets flagged in the parse report, not discarded.
+- **Schema inference** — works out semantic type per column (numeric, categorical, boolean, IP address, HTTP status, etc.), not just pandas dtype, and runs type-specific validation (e.g. HTTP status codes are checked against the valid 100–599 range).
+- **Dynamic rule generation** — instead of a fixed checklist, rules are generated per dataset based on its actual schema and profile. A constant column gets flagged differently than a column with 40% missing values.
+- **EDA module** — Pearson correlation, Shannon entropy, IQR-based outlier detection, skew/kurtosis, co-missing pattern analysis.
+- **Natural-language summary** — auto-generated plain-English recommendations, so the output is usable by someone who isn't going to read a JSON blob.
 
-**The gap:** Small and mid-sized teams need automated, instant data quality assessment — without the complexity or cost.
-
-> IBM estimates bad data costs the US economy **$3.1 trillion per year**. Poor data quality causes wrong inventory decisions, patient misdiagnoses, undetected fraud and failed ML models.
-
----
-
-## What This Does
-
-Upload any dataset — CSV, Excel, JSON, or log file — and get an instant, comprehensive quality report in seconds.
-
-The engine automatically:
-- Detects file format, encoding and delimiter
-- Profiles every column (missing values, distributions, types)
-- Infers schema and semantic types (email, IP address, timestamp, HTTP status...)
-- Generates and evaluates validation rules dynamically
-- Scores the dataset from 0–100 with weighted rules
-- Runs exploratory data analysis (correlations, outliers, distributions)
-- Generates actionable, business-friendly recommendations
-- Produces a natural language summary
-
----
-
-## Architecture
-
-```
-data-quality-engine/
-├── backend/
-│   ├── main.py                  ← FastAPI server (4 endpoints)
-│   └── dq_engine/
-│       ├── smart_loader.py      ← Intelligent file parser
-│       ├── profiler.py          ← Column-level statistics
-│       ├── schema.py            ← Semantic type inference
-│       ├── rule_factory.py      ← Dynamic rule generation
-│       ├── rules.py             ← Rule implementations
-│       ├── scorer.py            ← Weighted quality scoring
-│       ├── eda.py               ← Exploratory data analysis
-│       ├── recommendations.py   ← Actionable fix generator
-│       ├── report.py            ← Report compilation
-│       ├── pipeline.py          ← Main orchestration
-│       └── sql_loader.py        ← SQLite / PostgreSQL connector
-├── frontend/
-│   └── src/
-│       └── App.jsx              ← React dashboard
-└── data/
-    └── *.csv                    ← Sample datasets
-```
-
-### Pipeline Flow
-
-```
-File Upload → Smart Loader → Profiler → Schema Detector
-    → Rule Factory → Rule Evaluator → Scorer
-    → EDA Analyzer → Recommendation Engine
-    → Natural Language Summary → JSON Report → Dashboard
-```
-
----
-
-## Key Features
-
-### Smart Loader
-Automatically detects and handles any file format:
-- **Format detection** — CSV, TSV, PSV, JSON, Excel, Apache logs, Nginx logs, Syslog
-- **Encoding detection** — uses `chardet` with fallback chain
-- **Excel artifact handling** — strips outer quotes added by Excel when saving log files
-- **Junk line filtering** — skips separators, comments, metadata headers
-- **Large file handling** — intelligent sampling for files over 50MB (first/mid/last 10%)
-- **Mid-file encoding errors** — replaces corrupted bytes with NaN, never silently drops rows
-- **Data freshness check** — detects stale data using timestamp columns
-
-### Dynamic Rule Engine
-Rules are generated based on the schema and profile of each dataset — not hardcoded:
-
-| Rule | Description | Weight |
-|------|-------------|--------|
-| MissingValueRule | Flags columns with missing values above threshold | 15 |
-| DuplicateRowRule | Detects duplicate rows | 15 |
-| ConstantColumnRule | Flags columns with zero variance | 10 |
-| OutlierRule | IQR-based outlier detection | 10 |
-| SchemaConsistencyRule | Mixed data types in same column | 15 |
-| EmailFormatRule | Invalid email format percentage | 10 |
-| IPAddressRule | Invalid IP address format | 10 |
-| TimestampConsistencyRule | Unparseable timestamps | 10 |
-| TrafficVolumeRule | Minimum row count validation | 5 |
-
-Rules are domain-aware — HTTP status columns being constant (all 200s) is not flagged as a data quality issue because it indicates a healthy server.
-
-### EDA Module
-- Numeric summary (mean, median, std, IQR, skewness, kurtosis)
-- Pearson correlation matrix with strong pair detection (|r| > 0.7)
-- Distribution histograms with shape classification
-- IQR-based outlier analysis with sample values
-- Categorical frequency distribution with Shannon entropy
-- Co-missing pattern detection
-- Auto-generated insights in plain English
-
-### Recommendations Engine
-Every flagged issue comes with:
-- **Severity** — HIGH / MEDIUM / LOW
-- **Business impact** — plain English explanation of why it matters
-- **Actionable fix** — specific pandas/SQL code suggestion
-- **Action type** — IMPUTE / DROP_COLUMN / INVESTIGATE / REVIEW
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Backend | Python 3.10, FastAPI, Uvicorn |
-| Data Processing | Pandas, NumPy |
-| File Parsing | chardet, csv.Sniffer, openpyxl |
-| Database | SQLAlchemy, SQLite |
-| Frontend | React 18, Recharts |
-| API | REST, JSON, multipart/form-data |
-
----
-
-## Setup
-
-### Prerequisites
-- Python 3.10+
-- Node.js 18+
-
-### Backend
+## Getting started
 
 ```bash
-# Clone the repository
 git clone https://github.com/rareya/data-quality-engine.git
 cd data-quality-engine
-
-# Create virtual environment
 python -m venv venv
-venv\Scripts\activate        # Windows
-source venv/bin/activate     # macOS/Linux
-
-# Install dependencies
+source venv/bin/activate   # venv\Scripts\activate on Windows
 pip install -r requirements.txt
+```
 
-# Start the API server
+Run the pipeline directly:
+
+```python
+from backend.dq_engine.pipeline import DataQualityPipeline
+
+report = DataQualityPipeline("your_data.csv").run()
+print(report["quality_score"])
+print(report["summary"])
+```
+
+Or run the API + frontend:
+
+```bash
 uvicorn backend.main:app --reload
-# Server runs at http://127.0.0.1:8000
+cd frontend && npm install && npm run dev
 ```
 
-### Frontend
+## Testing
 
 ```bash
-cd frontend
-npm install
-npm run dev
-# Dashboard runs at http://localhost:5173
+pytest tests/ -v
 ```
 
-### API Docs
-FastAPI auto-generates interactive API documentation at:
+55 tests covering rules, scoring, schema detection, profiling, the smart loader, and full end-to-end pipeline runs. Runs on every push via GitHub Actions.
+
+![Tests](https://github.com/rareya/data-quality-engine/actions/workflows/tests.yml/badge.svg)
+
+## Benchmarks
+
+Two separate validations, because "it runs without crashing" and "it gives correct answers" are different claims.
+
+**Accuracy against known ground truth.** A synthetic dataset (2,040 rows) with deliberately injected, exactly-counted defects — 150 missing values, 40 duplicate rows, 1 constant column. The engine detected all three at 100% accuracy against the known counts.
+
+**Validation against a real, independently-documented dataset.** The [UCI Online Retail dataset](https://archive.ics.uci.edu/ml/datasets/online+retail) (541,909 real transactions from a UK online retailer, cited in Chen, Sain & Guo, 2012, *Journal of Database Marketing and Customer Strategy Management*). This dataset's defects are already publicly documented elsewhere — ~24.9% missing `CustomerID`, ~0.27% missing `Description`, ~5,268 duplicate rows. The engine's output matched these independently-published figures.
+
+**Comparison against Great Expectations**, on the same 541K-row dataset. This isn't a clean apples-to-apples speed test — the two tools aren't doing the same amount of work, and the numbers reflect that honestly rather than being cherry-picked:
+
+| Metric | Data Quality Engine | Great Expectations |
+|---|---|---|
+| Setup code required | 2 lines | 18 lines |
+| Checks run | 18 | 11 |
+| Runtime | 10.7s | 1.6s |
+
+Great Expectations was faster because it only ran 11 basic null/range checks in this comparison. In the same run, this engine also computed a full EDA report (correlation matrix, entropy, outlier detection, skew/kurtosis) and generated natural-language recommendations — none of which Great Expectations does out of the box. The honest takeaway isn't "faster," it's "less setup for more output." A stripped-down, EDA-skipping mode would likely close most of the runtime gap, but that's not what's shipped today.
+
+## Known limitations
+
+- Log format detection uses fairly strict regex patterns (particularly for the Apache CSV format) — a log line with unexpected leading whitespace or an unusual field order will fall through to the generic custom-log parser rather than the specific one.
+- Header detection on tabular files uses a heuristic (numeric content in row 2 vs row 1) that can misfire on edge cases like ID columns that look numeric in both rows.
+- Large-file intelligent sampling (first/middle/last 10%) is a reasonable heuristic for spotting quality drift across a file, but it's still a sample — it won't catch a rare defect confined to a small slice of the untouched 70%.
+- Semantic type detection for log-specific fields (`ip`, `status`, `timestamp`) is currently based on exact column name matches rather than content inference — a column called `client_ip` won't get the same validation as one called `ip`.
+
+## Project structure
+
 ```
-http://127.0.0.1:8000/docs
+backend/
+  dq_engine/
+    smart_loader.py      # file loading, format detection, parsing
+    schema.py             # semantic type inference
+    profiler.py            # statistical profiling
+    rule_factory.py       # dynamic rule generation
+    scorer.py              # weighted quality scoring
+    eda.py                    # correlation, entropy, outliers
+    recommendations.py  # natural language output
+    report.py               # final report assembly
+    pipeline.py            # orchestration
+  main.py                    # FastAPI app
+frontend/                    # React dashboard
+tests/                          # pytest suite
+benchmark/                # accuracy + real-data + GE comparison scripts
 ```
-
----
-
-## API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/analyze` | Upload file → full quality report |
-| `POST` | `/analyze-sql` | Analyze SQLite table |
-| `GET` | `/analyze-sql/tables` | List tables in a database |
-| `GET` | `/demo` | Run on built-in demo dataset |
-| `GET` | `/health` | Health check |
-
-### Example Request
-
-```bash
-curl -X POST http://127.0.0.1:8000/analyze \
-  -F "file=@your_data.csv"
-```
-
-### Example Response
-
-```json
-{
-  "rows": 480,
-  "column_count": 7,
-  "quality_score": {
-    "score": 90.48,
-    "status": "WARNING"
-  },
-  "summary": "Dataset contains 480 rows and 7 columns. Score: 90.48/100 — WARNING. 1 critical issue requires attention.",
-  "failed_rules": [...],
-  "recommendations": [...],
-  "eda": {
-    "numeric_summary": {...},
-    "outlier_analysis": {...},
-    "insights": [...]
-  },
-  "parse_report": {
-    "file_type": "log",
-    "log_format": "apache_csv",
-    "parse_confidence": "100%",
-    "encoding": "ascii"
-  }
-}
-```
-
----
-
-## Dashboard
-
-The React frontend provides a 6-section dashboard:
-
-- **Overview** — animated score gauge, stat cards, missing values chart, rule summary
-- **Rule Validation** — filterable pass/fail table for all validation rules
-- **Recommendations** — severity-filtered actionable fixes with business impact
-- **EDA & Charts** — histograms, outlier analysis, correlations, categorical breakdowns
-- **Column Explorer** — click any column to inspect its full statistical profile
-- **Parse Report** — how the smart loader processed the file, encoding, freshness
-
-![Overview](screenshots/overview1.png)
-![EDA](screenshots/EDA.png)
-![Recommendations](screenshots/recommendation.png)
-![Column Explorer](screenshots/rule_validation.png)
----
-
-## Sample Datasets
-
-| Dataset | Rows | Columns | Interesting Issues |
-|---------|------|---------|-------------------|
-| `students.csv` | 500 | 8 | Missing grades, age outliers |
-| `ongc_access.csv` | 480 | 7 | Apache CSV log, 62% missing size |
-
----
-
-## Design Decisions
-
-**Why not use Great Expectations or Talend?**
-Enterprise tools require dedicated teams and cost lakhs. This engine is designed for any analyst to use immediately — no configuration, no infrastructure.
-
-**Why generate rules dynamically?**
-Hardcoded rules don't scale. Different datasets need different rules. The rule factory inspects the schema and profile of each dataset and generates appropriate rules automatically.
-
-**Why is the smart loader needed?**
-Real-world data is messy. Log files saved via Excel get extra quoting. Files have wrong encodings. Large files crash systems. The smart loader handles all of this transparently before the pipeline even starts.
-
-**Why flag issues but not auto-fix them?**
-The engine tells you WHAT is wrong. A data analyst decides WHY it matters and WHAT to do given the business context. Automation raises the floor — it doesn't replace judgment.
-
----
-
-## Author
-
-Built by Aarya Patankar— Data Analyst Intern Project @ONGC, 2026.
-
----
 
 ## License
 
-MIT License — free to use, modify and distribute.
+MIT
