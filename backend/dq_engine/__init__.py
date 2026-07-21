@@ -17,7 +17,7 @@ from backend.dq_engine.recommendations import RecommendationEngine
 __all__ = [
     "DataQualityPipeline",
     "DataQualityPipelineFromDataFrame",
-    "DataLoader",
+    "SmartLoader",
     "SQLiteLoader",
     "DataProfiler",
     "SchemaDetector",
